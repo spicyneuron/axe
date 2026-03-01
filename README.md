@@ -4,6 +4,12 @@
 
 A CLI tool for managing and running LLM-powered agents.
 
+## Why Axe?
+
+Most AI tooling assumes you want a chatbot. A long-running session with a massive context window doing everything at once. But that's not how good software works. Good software is small, focused, and composable.
+
+Axe treats LLM agents the same way Unix treats programs. Each agent does one thing well. You define it in a TOML file, give it a focused skill, and run it from the command line. Pipe data in, get results out. Chain agents together. Trigger them from cron, git hooks, or CI. Whatever you already use. No daemon, no GUI, no framework to buy into. Just a binary and your configs.
+
 ## Overview
 
 Axe orchestrates LLM-powered agents defined via TOML configuration files. Each
@@ -152,4 +158,4 @@ or in `config.toml`.
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).
