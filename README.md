@@ -1,3 +1,5 @@
+![axe banner](banner.png)
+
 # axe
 
 A CLI tool for managing and running LLM-powered agents.
