@@ -139,7 +139,10 @@ func ExecuteCallAgent(ctx context.Context, call provider.ToolCall, opts ExecuteO
 	}
 
 	// Step 8: Resolve sub-agent's working directory, files, skill, system prompt
-	workdir := resolve.Workdir("", cfg.Workdir)
+	workdir, err := resolve.Workdir("", cfg.Workdir)
+	if err != nil {
+		return errorResult(call.ID, agentName, fmt.Sprintf("failed to resolve workdir for agent %q: %s", agentName, err), opts)
+	}
 
 	files, err := resolve.Files(cfg.Files, workdir)
 	if err != nil {
@@ -257,7 +260,7 @@ func ExecuteCallAgent(ctx context.Context, call provider.ToolCall, opts ExecuteO
 	defer cancel()
 
 	// Step 14: Run conversation loop (or single-shot if no tools)
-	resp, err := runConversationLoop(callCtx, prov, req, cfg, registry, newDepth, opts)
+	resp, err := runConversationLoop(callCtx, prov, req, cfg, registry, newDepth, opts, workdir)
 	if err != nil {
 		durationMs := time.Since(start).Milliseconds()
 		if opts.Verbose && opts.Stderr != nil {
@@ -298,8 +301,7 @@ func ExecuteCallAgent(ctx context.Context, call provider.ToolCall, opts ExecuteO
 
 // runConversationLoop runs the multi-turn conversation loop for a sub-agent.
 // If the sub-agent has no tools, this is a single-shot call.
-func runConversationLoop(ctx context.Context, prov provider.Provider, req *provider.Request, cfg *agent.AgentConfig, registry *Registry, depth int, opts ExecuteOptions) (*provider.Response, error) {
-	toolWorkdir := resolve.Workdir("", cfg.Workdir)
+func runConversationLoop(ctx context.Context, prov provider.Provider, req *provider.Request, cfg *agent.AgentConfig, registry *Registry, depth int, opts ExecuteOptions, toolWorkdir string) (*provider.Response, error) {
 	for turn := 0; turn < maxConversationTurns; turn++ {
 		resp, err := prov.Send(ctx, req)
 		if err != nil {

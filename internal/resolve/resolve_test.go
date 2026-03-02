@@ -10,17 +10,130 @@ import (
 	"testing"
 )
 
+// --- ExpandPath Tests ---
+
+func TestExpandPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("os.UserHomeDir() failed, skipping ExpandPath tests")
+	}
+
+	tests := []struct {
+		name   string
+		input  string
+		setup  func(t *testing.T)
+		want   string
+		errMsg string
+	}{
+		{
+			name:  "empty",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "tilde_slash",
+			input: "~/foo/bar",
+			want:  home + "/foo/bar",
+		},
+		{
+			name:  "bare_tilde",
+			input: "~",
+			want:  home,
+		},
+		{
+			name:  "env_var",
+			input: "$HOME/foo",
+			want:  home + "/foo",
+		},
+		{
+			name:  "braced_env_var",
+			input: "${HOME}/foo",
+			want:  home + "/foo",
+		},
+		{
+			name:  "tilde_and_env",
+			input: "~/$TEST_AXE_VAR",
+			setup: func(t *testing.T) {
+				t.Setenv("TEST_AXE_VAR", "proj")
+			},
+			want: home + "/proj",
+		},
+		{
+			name:  "absolute",
+			input: "/abs/path",
+			want:  "/abs/path",
+		},
+		{
+			name:  "relative",
+			input: "rel/path",
+			want:  "rel/path",
+		},
+		{
+			name:  "tilde_user",
+			input: "~user/foo",
+			want:  "~user/foo",
+		},
+		{
+			name:  "mid_tilde",
+			input: "foo/~/bar",
+			want:  "foo/~/bar",
+		},
+		{
+			name:  "unset_var",
+			input: "$AXE_UNSET_VAR_TEST/foo",
+			want:  "/foo",
+		},
+		{
+			name:  "no_vars",
+			input: "just-a-name",
+			want:  "just-a-name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t)
+			}
+
+			got, err := ExpandPath(tt.input)
+			if tt.errMsg != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.errMsg)
+				}
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Fatalf("expected error containing %q, got %q", tt.errMsg, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("ExpandPath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 // --- Workdir Tests ---
 
 func TestWorkdir_FlagOverride(t *testing.T) {
-	result := Workdir("/flag/path", "/toml/path")
+	result, err := Workdir("/flag/path", "/toml/path")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result != "/flag/path" {
 		t.Errorf("expected /flag/path, got %s", result)
 	}
 }
 
 func TestWorkdir_TOMLFallback(t *testing.T) {
-	result := Workdir("", "/toml/path")
+	result, err := Workdir("", "/toml/path")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result != "/toml/path" {
 		t.Errorf("expected /toml/path, got %s", result)
 	}
@@ -31,9 +144,38 @@ func TestWorkdir_CWDFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get cwd: %v", err)
 	}
-	result := Workdir("", "")
+	result, err := Workdir("", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result != cwd {
 		t.Errorf("expected %s, got %s", cwd, result)
+	}
+}
+
+func TestWorkdir_TildeExpansion(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("os.UserHomeDir() failed, skipping")
+	}
+	result, err := Workdir("", "~/projects")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := home + "/projects"
+	if result != want {
+		t.Errorf("Workdir(\"\", \"~/projects\") = %q, want %q", result, want)
+	}
+}
+
+func TestWorkdir_EnvVarExpansion(t *testing.T) {
+	t.Setenv("TEST_AXE_WORKDIR", "/tmp/testwd")
+	result, err := Workdir("", "$TEST_AXE_WORKDIR")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "/tmp/testwd" {
+		t.Errorf("Workdir(\"\", \"$TEST_AXE_WORKDIR\") = %q, want %q", result, "/tmp/testwd")
 	}
 }
 
@@ -406,6 +548,24 @@ func TestSkill_BareNameFileInConfigDir(t *testing.T) {
 	}
 	if result != "direct file" {
 		t.Errorf("expected 'direct file', got %q", result)
+	}
+}
+
+func TestSkill_EnvVarInPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AXE_TEST_SKILL_DIR", dir)
+
+	skillFile := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(skillFile, []byte("expanded skill"), 0644); err != nil {
+		t.Fatalf("failed to write skill file: %v", err)
+	}
+
+	result, err := Skill("$AXE_TEST_SKILL_DIR/SKILL.md", "/irrelevant")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "expanded skill" {
+		t.Errorf("expected 'expanded skill', got %q", result)
 	}
 }
 

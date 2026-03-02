@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jrswab/axe/internal/resolve"
 	"github.com/jrswab/axe/internal/xdg"
 )
 
@@ -15,12 +16,12 @@ import (
 var Now func() time.Time = time.Now
 
 // FilePath returns the memory file path for the given agent.
-// If customPath is non-empty it is returned as-is.
-// Otherwise the default path is <xdg-data-dir>/memory/<agentName>.md.
+// If customPath is non-empty it is expanded (~ and $VAR) via resolve.ExpandPath
+// and returned. Otherwise the default path is <xdg-data-dir>/memory/<agentName>.md.
 // The function does not create any directories or files.
 func FilePath(agentName, customPath string) (string, error) {
 	if customPath != "" {
-		return customPath, nil
+		return resolve.ExpandPath(customPath)
 	}
 
 	dataDir, err := xdg.GetDataDir()

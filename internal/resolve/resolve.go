@@ -9,19 +9,56 @@ import (
 	"strings"
 )
 
+// ExpandPath expands ~ (tilde) and environment variables in a path string.
+// Tilde expansion replaces a leading "~/" or bare "~" with the current user's
+// home directory. Environment variables ($VAR and ${VAR}) are expanded via
+// os.ExpandEnv. Tilde expansion happens before env var expansion.
+func ExpandPath(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+
+	// Tilde expansion: only "~" or "~/..."
+	if path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to expand ~: %w", err)
+		}
+		path = home
+	} else if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to expand ~: %w", err)
+		}
+		path = home + path[1:] // replace ~ with home, keep /...
+	}
+
+	// Environment variable expansion
+	path = os.ExpandEnv(path)
+
+	return path, nil
+}
+
 // Workdir resolves the working directory using a priority chain:
 // flagValue (from --workdir) > tomlValue (from agent TOML) > os.Getwd() > "."
-func Workdir(flagValue, tomlValue string) string {
-	if flagValue != "" {
-		return flagValue
+// The selected path is expanded via ExpandPath before returning.
+func Workdir(flagValue, tomlValue string) (string, error) {
+	var raw string
+	switch {
+	case flagValue != "":
+		raw = flagValue
+	case tomlValue != "":
+		raw = tomlValue
+	default:
+		cwd, err := os.Getwd()
+		if err != nil {
+			raw = "."
+		} else {
+			raw = cwd
+		}
 	}
-	if tomlValue != "" {
-		return tomlValue
-	}
-	if cwd, err := os.Getwd(); err == nil {
-		return cwd
-	}
-	return "."
+
+	return ExpandPath(raw)
 }
 
 // FileContent holds a matched file's relative path and its text content.
@@ -54,6 +91,11 @@ func Files(patterns []string, workdir string) ([]FileContent, error) {
 	var results []FileContent
 
 	for _, pattern := range patterns {
+		pattern, err = ExpandPath(pattern)
+		if err != nil {
+			return nil, err
+		}
+
 		var matches []string
 		var matchErr error
 
@@ -327,6 +369,13 @@ func Skill(skillPath, configDir string) (string, error) {
 	if skillPath == "" {
 		return "", nil
 	}
+
+	// Expand ~ and $VAR before resolution.
+	expanded, err := ExpandPath(skillPath)
+	if err != nil {
+		return "", err
+	}
+	skillPath = expanded
 
 	var tried []string
 

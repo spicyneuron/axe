@@ -52,6 +52,37 @@ func TestFilePath_EmptyAgentName(t *testing.T) {
 	}
 }
 
+func TestFilePath_TildeExpansion(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("os.UserHomeDir() failed, skipping")
+	}
+
+	got, err := FilePath("agent", "~/my-memory.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := home + "/my-memory.md"
+	if got != want {
+		t.Errorf("FilePath() = %q, want %q", got, want)
+	}
+}
+
+func TestFilePath_EnvVarExpansion(t *testing.T) {
+	t.Setenv("AXE_TEST_MEM_DIR", "/tmp/mem")
+
+	got, err := FilePath("agent", "$AXE_TEST_MEM_DIR/notes.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := "/tmp/mem/notes.md"
+	if got != want {
+		t.Errorf("FilePath() = %q, want %q", got, want)
+	}
+}
+
 // --- AppendEntry tests ---
 
 func TestAppendEntry_CreatesFileAndDirs(t *testing.T) {

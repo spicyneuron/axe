@@ -101,7 +101,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Step 6: Resolve working directory
 	flagWorkdir, _ := cmd.Flags().GetString("workdir")
-	workdir := resolve.Workdir(flagWorkdir, cfg.Workdir)
+	workdir, err := resolve.Workdir(flagWorkdir, cfg.Workdir)
+	if err != nil {
+		return &ExitError{Code: 2, Err: err}
+	}
 
 	// Step 7: Resolve file globs
 	files, err := resolve.Files(cfg.Files, workdir)
