@@ -2136,7 +2136,7 @@ enabled = true
 	_ = os.MkdirAll(memoryDir, 0755)
 	var memContent strings.Builder
 	for i := 1; i <= 3; i++ {
-		memContent.WriteString(fmt.Sprintf("## 2026-02-28T10:0%d:00Z\n**Task:** task %d\n**Result:** result %d\n\n", i, i, i))
+		fmt.Fprintf(&memContent, "## 2026-02-28T10:0%d:00Z\n**Task:** task %d\n**Result:** result %d\n\n", i, i, i)
 	}
 	_ = os.WriteFile(filepath.Join(memoryDir, "mem-verbose.md"), []byte(memContent.String()), 0644)
 
