@@ -93,4 +93,5 @@ func RegisterAll(r *Registry) {
 	r.Register(toolname.ListDirectory, listDirectoryEntry())
 	r.Register(toolname.ReadFile, readFileEntry())
 	r.Register(toolname.WriteFile, writeFileEntry())
+	r.Register(toolname.EditFile, editFileEntry())
 }

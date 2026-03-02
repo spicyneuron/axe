@@ -348,6 +348,36 @@ func TestRegisterAll_ResolvesWriteFile(t *testing.T) {
 	}
 }
 
+func TestRegisterAll_RegistersEditFile(t *testing.T) {
+	r := NewRegistry()
+	RegisterAll(r)
+
+	if !r.Has(toolname.EditFile) {
+		t.Fatalf("Has(%q) returned false after RegisterAll", toolname.EditFile)
+	}
+}
+
+func TestRegisterAll_ResolvesEditFile(t *testing.T) {
+	r := NewRegistry()
+	RegisterAll(r)
+
+	tools, err := r.Resolve([]string{toolname.EditFile})
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(tools))
+	}
+	if tools[0].Name != toolname.EditFile {
+		t.Errorf("tool Name: got %q, want %q", tools[0].Name, toolname.EditFile)
+	}
+	for _, param := range []string{"path", "old_string", "new_string", "replace_all"} {
+		if _, ok := tools[0].Parameters[param]; !ok {
+			t.Errorf("expected tool to have a %q parameter", param)
+		}
+	}
+}
+
 func TestRegisterAll_Idempotent(t *testing.T) {
 	r := NewRegistry()
 	RegisterAll(r)
