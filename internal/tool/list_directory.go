@@ -1,0 +1,79 @@
+package tool
+
+import (
+	"context"
+	"os"
+	"strings"
+
+	"github.com/jrswab/axe/internal/provider"
+	"github.com/jrswab/axe/internal/toolname"
+)
+
+// listDirectoryEntry returns the ToolEntry for the list_directory tool.
+func listDirectoryEntry() ToolEntry {
+	return ToolEntry{
+		Definition: listDirectoryDefinition,
+		Execute:    listDirectoryExecute,
+	}
+}
+
+func listDirectoryDefinition() provider.Tool {
+	return provider.Tool{
+		Name:        toolname.ListDirectory,
+		Description: "List the contents of a directory relative to the working directory. Returns one entry per line; subdirectories are suffixed with /.",
+		Parameters: map[string]provider.ToolParameter{
+			"path": {
+				Type:        "string",
+				Description: "Relative path to the directory to list. Use \".\" to list the working directory root.",
+				Required:    true,
+			},
+		},
+	}
+}
+
+func listDirectoryExecute(ctx context.Context, call provider.ToolCall, ec ExecContext) provider.ToolResult {
+	path := call.Arguments["path"]
+
+	resolved, err := validatePath(ec.Workdir, path)
+	if err != nil {
+		return provider.ToolResult{
+			CallID:  call.ID,
+			Content: err.Error(),
+			IsError: true,
+		}
+	}
+
+	entries, err := os.ReadDir(resolved)
+	if err != nil {
+		return provider.ToolResult{
+			CallID:  call.ID,
+			Content: err.Error(),
+			IsError: true,
+		}
+	}
+
+	if len(entries) == 0 {
+		return provider.ToolResult{
+			CallID:  call.ID,
+			Content: "",
+			IsError: false,
+		}
+	}
+
+	var b strings.Builder
+	for i, entry := range entries {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(entry.Name())
+		if entry.IsDir() {
+			b.WriteByte('/')
+		}
+	}
+
+	return provider.ToolResult{
+		CallID:  call.ID,
+		Content: b.String(),
+		IsError: false,
+	}
+}

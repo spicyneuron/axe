@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/jrswab/axe/internal/provider"
+	"github.com/jrswab/axe/internal/toolname"
 )
 
 // ExecContext holds the minimal context needed by generic tool executors.
@@ -82,4 +83,12 @@ func (r *Registry) Dispatch(ctx context.Context, call provider.ToolCall, ec Exec
 		return provider.ToolResult{}, fmt.Errorf("tool %q has no executor", call.Name)
 	}
 	return entry.Execute(ctx, call, ec), nil
+}
+
+// RegisterAll registers all implemented tool entries into the given registry.
+// Both cmd/run.go and ExecuteCallAgent call this after NewRegistry().
+// Future milestones add lines here — no call-site changes needed.
+// Safe to call multiple times (Register silently replaces duplicates).
+func RegisterAll(r *Registry) {
+	r.Register(toolname.ListDirectory, listDirectoryEntry())
 }

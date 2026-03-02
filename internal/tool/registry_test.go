@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jrswab/axe/internal/provider"
+	"github.com/jrswab/axe/internal/toolname"
 )
 
 func TestNewRegistry(t *testing.T) {
@@ -256,5 +257,43 @@ func TestRegistry_Dispatch_PassesExecContext(t *testing.T) {
 	}
 	if capturedEC.Verbose != true {
 		t.Error("expected Verbose to be true")
+	}
+}
+
+func TestRegisterAll_RegistersListDirectory(t *testing.T) {
+	r := NewRegistry()
+	RegisterAll(r)
+
+	if !r.Has(toolname.ListDirectory) {
+		t.Fatalf("Has(%q) returned false after RegisterAll", toolname.ListDirectory)
+	}
+}
+
+func TestRegisterAll_ResolvesListDirectory(t *testing.T) {
+	r := NewRegistry()
+	RegisterAll(r)
+
+	tools, err := r.Resolve([]string{toolname.ListDirectory})
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(tools))
+	}
+	if tools[0].Name != toolname.ListDirectory {
+		t.Errorf("tool Name: got %q, want %q", tools[0].Name, toolname.ListDirectory)
+	}
+	if _, ok := tools[0].Parameters["path"]; !ok {
+		t.Error("expected tool to have a 'path' parameter")
+	}
+}
+
+func TestRegisterAll_Idempotent(t *testing.T) {
+	r := NewRegistry()
+	RegisterAll(r)
+	RegisterAll(r) // second call should not panic
+
+	if !r.Has(toolname.ListDirectory) {
+		t.Fatalf("Has(%q) returned false after double RegisterAll", toolname.ListDirectory)
 	}
 }
