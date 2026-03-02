@@ -1,0 +1,28 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2026-03-02
+
+### Added
+- Core CLI with `run`, `agents list`, `agents show`, `agents init`, `agents edit`, `gc`, and `config init` commands
+- TOML-based agent configuration with SKILL.md context support
+- Multi-provider LLM support: Anthropic, OpenAI, and Ollama
+- Tool-calling system with `read_file`, `write_file`, `edit_file`, `list_directory`, and `run_command` tools
+- Sub-agent orchestration with `call_agent` tool and depth-limited execution
+- Agent memory system with XDG-compliant data storage and garbage collection
+- Path security: `~` and `$VAR` expansion for user-supplied paths
+- Stdin piping support for composing with Unix tools
+- Dry-run mode and per-tool verbose logging
+- Docker containerization support
+- CI workflows: lint, test, build, and GoReleaser
+
+### Fixed
+- Arg validation UX and skill path resolution
+- staticcheck/errcheck lint issues
+- Duplicate error silencing, glob validation, and nil ExitError guard
+
+[0.1.0]: https://github.com/jrswab/axe/releases/tag/v0.1.0
