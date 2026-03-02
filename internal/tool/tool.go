@@ -242,7 +242,7 @@ func ExecuteCallAgent(ctx context.Context, call provider.ToolCall, opts ExecuteO
 	defer cancel()
 
 	// Step 14: Run conversation loop (or single-shot if no tools)
-	resp, err := runConversationLoop(callCtx, prov, req, cfg, newDepth, opts)
+	resp, err := runConversationLoop(callCtx, prov, req, cfg, NewRegistry(), newDepth, opts)
 	if err != nil {
 		durationMs := time.Since(start).Milliseconds()
 		if opts.Verbose && opts.Stderr != nil {
@@ -283,7 +283,8 @@ func ExecuteCallAgent(ctx context.Context, call provider.ToolCall, opts ExecuteO
 
 // runConversationLoop runs the multi-turn conversation loop for a sub-agent.
 // If the sub-agent has no tools, this is a single-shot call.
-func runConversationLoop(ctx context.Context, prov provider.Provider, req *provider.Request, cfg *agent.AgentConfig, depth int, opts ExecuteOptions) (*provider.Response, error) {
+func runConversationLoop(ctx context.Context, prov provider.Provider, req *provider.Request, cfg *agent.AgentConfig, registry *Registry, depth int, opts ExecuteOptions) (*provider.Response, error) {
+	toolWorkdir := resolve.Workdir("", cfg.Workdir)
 	for turn := 0; turn < maxConversationTurns; turn++ {
 		resp, err := prov.Send(ctx, req)
 		if err != nil {
@@ -324,10 +325,20 @@ func runConversationLoop(ctx context.Context, prov provider.Provider, req *provi
 				}
 				results[i] = ExecuteCallAgent(ctx, tc, subOpts)
 			} else {
-				results[i] = provider.ToolResult{
-					CallID:  tc.ID,
-					Content: fmt.Sprintf("Unknown tool: %q", tc.Name),
-					IsError: true,
+				execCtx := ExecContext{
+					Workdir: toolWorkdir,
+					Stderr:  opts.Stderr,
+					Verbose: opts.Verbose,
+				}
+				result, dispatchErr := registry.Dispatch(ctx, tc, execCtx)
+				if dispatchErr != nil {
+					results[i] = provider.ToolResult{
+						CallID:  tc.ID,
+						Content: dispatchErr.Error(),
+						IsError: true,
+					}
+				} else {
+					results[i] = result
 				}
 			}
 		}

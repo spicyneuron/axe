@@ -210,15 +210,26 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		MaxTokens:   cfg.Params.MaxTokens,
 	}
 
-	// Step 16b: Inject tools if agent has sub_agents
-	// Depth starts at 0 for top-level invocation
+	// Step 16b: Create tool registry and resolve configured tools
+	registry := tool.NewRegistry()
 	depth := 0
 	effectiveMaxDepth := 3 // system default
 	if cfg.SubAgentsConf.MaxDepth > 0 && cfg.SubAgentsConf.MaxDepth <= 5 {
 		effectiveMaxDepth = cfg.SubAgentsConf.MaxDepth
 	}
+
+	// Inject configured tools first (from cfg.Tools)
+	if len(cfg.Tools) > 0 {
+		resolvedTools, resolveErr := registry.Resolve(cfg.Tools)
+		if resolveErr != nil {
+			return &ExitError{Code: 1, Err: fmt.Errorf("failed to resolve tools: %w", resolveErr)}
+		}
+		req.Tools = append(req.Tools, resolvedTools...)
+	}
+
+	// Then inject call_agent if agent has sub_agents
 	if len(cfg.SubAgents) > 0 && depth < effectiveMaxDepth {
-		req.Tools = []provider.Tool{tool.CallAgentTool(cfg.SubAgents)}
+		req.Tools = append(req.Tools, tool.CallAgentTool(cfg.SubAgents))
 	}
 
 	// Verbose: pre-call info
@@ -329,7 +340,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			req.Messages = append(req.Messages, assistantMsg)
 
 			// Execute tool calls
-			results := executeToolCalls(ctx, resp.ToolCalls, cfg, globalCfg, depth, effectiveMaxDepth, parallel, verbose, cmd.ErrOrStderr())
+			results := executeToolCalls(ctx, resp.ToolCalls, cfg, globalCfg, registry, depth, effectiveMaxDepth, parallel, verbose, cmd.ErrOrStderr(), workdir)
 			totalToolCalls += len(resp.ToolCalls)
 
 			// Append tool result message
@@ -466,7 +477,7 @@ func printDryRun(cmd *cobra.Command, cfg *agent.AgentConfig, provName, modelName
 
 // executeToolCalls dispatches tool calls and returns results.
 // When parallel is true and there are multiple calls, they run concurrently.
-func executeToolCalls(ctx context.Context, toolCalls []provider.ToolCall, cfg *agent.AgentConfig, globalCfg *config.GlobalConfig, depth, maxDepth int, parallel, verbose bool, stderr io.Writer) []provider.ToolResult {
+func executeToolCalls(ctx context.Context, toolCalls []provider.ToolCall, cfg *agent.AgentConfig, globalCfg *config.GlobalConfig, registry *tool.Registry, depth, maxDepth int, parallel, verbose bool, stderr io.Writer, workdir string) []provider.ToolResult {
 	results := make([]provider.ToolResult, len(toolCalls))
 
 	execOpts := tool.ExecuteOptions{
@@ -486,10 +497,15 @@ func executeToolCalls(ctx context.Context, toolCalls []provider.ToolCall, cfg *a
 			if tc.Name == tool.CallAgentToolName {
 				results[i] = tool.ExecuteCallAgent(ctx, tc, execOpts)
 			} else {
-				results[i] = provider.ToolResult{
-					CallID:  tc.ID,
-					Content: fmt.Sprintf("Unknown tool: %q", tc.Name),
-					IsError: true,
+				result, dispatchErr := registry.Dispatch(ctx, tc, tool.ExecContext{Workdir: workdir, Stderr: stderr, Verbose: verbose})
+				if dispatchErr != nil {
+					results[i] = provider.ToolResult{
+						CallID:  tc.ID,
+						Content: dispatchErr.Error(),
+						IsError: true,
+					}
+				} else {
+					results[i] = result
 				}
 			}
 		}
@@ -506,10 +522,15 @@ func executeToolCalls(ctx context.Context, toolCalls []provider.ToolCall, cfg *a
 				if call.Name == tool.CallAgentToolName {
 					res = tool.ExecuteCallAgent(ctx, call, execOpts)
 				} else {
-					res = provider.ToolResult{
-						CallID:  call.ID,
-						Content: fmt.Sprintf("Unknown tool: %q", call.Name),
-						IsError: true,
+					result, dispatchErr := registry.Dispatch(ctx, call, tool.ExecContext{Workdir: workdir, Stderr: stderr, Verbose: verbose})
+					if dispatchErr != nil {
+						res = provider.ToolResult{
+							CallID:  call.ID,
+							Content: dispatchErr.Error(),
+							IsError: true,
+						}
+					} else {
+						res = result
 					}
 				}
 				ch <- indexedResult{index: idx, result: res}
