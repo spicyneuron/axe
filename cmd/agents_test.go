@@ -347,6 +347,9 @@ func TestAgentsShow_NoArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing args, got nil")
 	}
+	if !strings.Contains(err.Error(), "missing required argument: <agent>") {
+		t.Errorf("error = %q, want to contain 'missing required argument: <agent>'", err.Error())
+	}
 }
 
 // --- Phase 10: agents init ---
@@ -454,6 +457,9 @@ func TestAgentsInit_NoArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing args, got nil")
 	}
+	if !strings.Contains(err.Error(), "missing required argument: <agent>") {
+		t.Errorf("error = %q, want to contain 'missing required argument: <agent>'", err.Error())
+	}
 }
 
 // --- Phase 11: agents edit ---
@@ -507,6 +513,9 @@ func TestAgentsEdit_NoArgs(t *testing.T) {
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for missing args, got nil")
+	}
+	if !strings.Contains(err.Error(), "missing required argument: <agent>") {
+		t.Errorf("error = %q, want to contain 'missing required argument: <agent>'", err.Error())
 	}
 }
 

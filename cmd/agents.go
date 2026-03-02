@@ -48,7 +48,7 @@ var agentsListCmd = &cobra.Command{
 var agentsShowCmd = &cobra.Command{
 	Use:   "show <agent>",
 	Short: "Show agent configuration details",
-	Args:  cobra.ExactArgs(1),
+	Args:  exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := agent.Load(args[0])
 		if err != nil {
@@ -114,7 +114,7 @@ var agentsShowCmd = &cobra.Command{
 var agentsInitCmd = &cobra.Command{
 	Use:   "init <agent>",
 	Short: "Create a new agent configuration file",
-	Args:  cobra.ExactArgs(1),
+	Args:  exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
@@ -151,7 +151,7 @@ var agentsInitCmd = &cobra.Command{
 var agentsEditCmd = &cobra.Command{
 	Use:   "edit <agent>",
 	Short: "Edit an agent configuration file",
-	Args:  cobra.ExactArgs(1),
+	Args:  exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		editor := os.Getenv("EDITOR")
 		if editor == "" {

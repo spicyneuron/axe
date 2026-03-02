@@ -115,8 +115,8 @@ func TestRunE_ErrorNotPrintedByCobra(t *testing.T) {
 
 	stderr := errBuf.String()
 	// With SilenceErrors, Cobra must not write the error to stderr itself.
-	// The error string from ExactArgs would contain "accepts 1 arg(s)".
-	if strings.Contains(stderr, "accepts 1 arg(s)") {
+	// The error string from exactArgs would contain "missing required argument".
+	if strings.Contains(stderr, "missing required argument") {
 		t.Errorf("Cobra should not print the error to stderr (duplicate); got:\n%s", stderr)
 	}
 }

@@ -27,12 +27,12 @@ const defaultUserMessage = "Execute the task described in your instructions."
 const maxConversationTurns = 50
 
 var runCmd = &cobra.Command{
-	Use:   "run",
+	Use:   "run <agent>",
 	Short: "Run an agent",
 	Long: `Run an agent by loading its TOML configuration, resolving all runtime
 context (working directory, file globs, skill, stdin), building a prompt,
 calling the LLM provider, and printing the response.`,
-	Args: cobra.ExactArgs(1),
+	Args: exactArgs(1),
 	RunE: runAgent,
 }
 

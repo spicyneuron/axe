@@ -314,26 +314,63 @@ func BuildSystemPrompt(systemPrompt, skillContent string, files []FileContent) s
 	return b.String()
 }
 
-// Skill loads skill content from a file path.
-// If skillPath is empty, returns empty string. If relative, resolves against configDir.
+// Skill loads skill content from a file path using a fallback chain:
+//  1. Direct resolution: if absolute use as-is, if relative join with configDir.
+//     If the resolved path is a regular file, read and return it.
+//  2. Directory with SKILL.md: if the resolved path is a directory,
+//     try SKILL.md inside it.
+//  3. Bare name in skills directory: if skillPath has no path separators,
+//     try configDir/skills/<skillPath>/SKILL.md.
+//
+// Returns ("", nil) if skillPath is empty.
 func Skill(skillPath, configDir string) (string, error) {
 	if skillPath == "" {
 		return "", nil
 	}
 
+	var tried []string
+
+	// Step 1: Direct resolution.
 	resolved := skillPath
 	if !filepath.IsAbs(skillPath) {
 		resolved = filepath.Join(configDir, skillPath)
 	}
 
-	if _, err := os.Stat(resolved); os.IsNotExist(err) {
-		return "", fmt.Errorf("skill not found: %s", resolved)
+	info, err := os.Stat(resolved)
+	if err == nil && !info.IsDir() {
+		data, readErr := os.ReadFile(resolved)
+		if readErr != nil {
+			return "", fmt.Errorf("failed to read skill: %w", readErr)
+		}
+		return string(data), nil
+	}
+	tried = append(tried, resolved)
+
+	// Step 2: Directory with SKILL.md.
+	if err == nil && info.IsDir() {
+		candidate := filepath.Join(resolved, "SKILL.md")
+		if fi, statErr := os.Stat(candidate); statErr == nil && !fi.IsDir() {
+			data, readErr := os.ReadFile(candidate)
+			if readErr != nil {
+				return "", fmt.Errorf("failed to read skill: %w", readErr)
+			}
+			return string(data), nil
+		}
+		tried = append(tried, candidate)
 	}
 
-	data, err := os.ReadFile(resolved)
-	if err != nil {
-		return "", fmt.Errorf("failed to read skill: %w", err)
+	// Step 3: Bare name in skills directory.
+	if !strings.Contains(skillPath, "/") && !strings.Contains(skillPath, string(filepath.Separator)) {
+		candidate := filepath.Join(configDir, "skills", skillPath, "SKILL.md")
+		if fi, statErr := os.Stat(candidate); statErr == nil && !fi.IsDir() {
+			data, readErr := os.ReadFile(candidate)
+			if readErr != nil {
+				return "", fmt.Errorf("failed to read skill: %w", readErr)
+			}
+			return string(data), nil
+		}
+		tried = append(tried, candidate)
 	}
 
-	return string(data), nil
+	return "", fmt.Errorf("skill not found: tried %s", strings.Join(tried, ", "))
 }

@@ -333,9 +333,79 @@ func TestSkill_NotFound(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for missing skill, got nil")
 	}
-	expected := "skill not found: /nonexistent/SKILL.md"
+	expected := "skill not found: tried /nonexistent/SKILL.md"
 	if err.Error() != expected {
 		t.Errorf("expected error %q, got %q", expected, err.Error())
+	}
+}
+
+func TestSkill_DirectoryAutoResolvesSKILLMD(t *testing.T) {
+	configDir := t.TempDir()
+	skillDir := filepath.Join(configDir, "skills", "review")
+	_ = os.MkdirAll(skillDir, 0755)
+	_ = os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("review skill content"), 0644)
+
+	result, err := Skill("skills/review", configDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "review skill content" {
+		t.Errorf("expected 'review skill content', got %q", result)
+	}
+}
+
+func TestSkill_BareNameResolvesToSkillsDir(t *testing.T) {
+	configDir := t.TempDir()
+	skillDir := filepath.Join(configDir, "skills", "yti")
+	_ = os.MkdirAll(skillDir, 0755)
+	_ = os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("yti skill content"), 0644)
+
+	result, err := Skill("yti", configDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "yti skill content" {
+		t.Errorf("expected 'yti skill content', got %q", result)
+	}
+}
+
+func TestSkill_AbsoluteDirectoryAutoResolvesSKILLMD(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "my-skill")
+	_ = os.MkdirAll(skillDir, 0755)
+	_ = os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("abs dir skill"), 0644)
+
+	result, err := Skill(skillDir, "/irrelevant")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "abs dir skill" {
+		t.Errorf("expected 'abs dir skill', got %q", result)
+	}
+}
+
+func TestSkill_BareNameNotFound(t *testing.T) {
+	configDir := t.TempDir()
+
+	_, err := Skill("nonexistent", configDir)
+	if err == nil {
+		t.Error("expected error for nonexistent bare skill name, got nil")
+	}
+	if !strings.Contains(err.Error(), "skill not found") {
+		t.Errorf("expected error to contain 'skill not found', got %q", err.Error())
+	}
+}
+
+func TestSkill_BareNameFileInConfigDir(t *testing.T) {
+	configDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(configDir, "myskill"), []byte("direct file"), 0644)
+
+	result, err := Skill("myskill", configDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "direct file" {
+		t.Errorf("expected 'direct file', got %q", result)
 	}
 }
 
