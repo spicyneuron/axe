@@ -63,13 +63,13 @@ Safest tool to start with. Read-only, no side effects. Also introduces `Register
 
 Read-only file access for the LLM.
 
-- [ ] Create `internal/tool/read_file.go`
-- [ ] Parameters: `path` (required), `offset` (optional, 1-indexed line number), `limit` (optional, max lines to return)
-- [ ] Returns content prefixed with line numbers (e.g., `1: package main`)
-- [ ] Defaults: offset=1, limit=2000
-- [ ] Path validation: same rules as `list_directory` (relative to workdir, no escape)
-- [ ] Register in registry
-- [ ] Tests: read full file, read with offset/limit, nonexistent file error, binary file handling (reject or truncate), path traversal rejection
+- [X] Create `internal/tool/read_file.go`
+- [X] Parameters: `path` (required), `offset` (optional, 1-indexed line number), `limit` (optional, max lines to return)
+- [X] Returns content prefixed with line numbers (e.g., `1: package main`)
+- [X] Defaults: offset=1, limit=2000
+- [X] Path validation: same rules as `list_directory` (relative to workdir, no escape)
+- [X] Register in registry
+- [X] Tests: read full file, read with offset/limit, nonexistent file error, binary file handling (reject or truncate), path traversal rejection
 
 ---
 

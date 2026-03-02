@@ -92,4 +92,5 @@ func (r *Registry) Dispatch(ctx context.Context, call provider.ToolCall, ec Exec
 func RegisterAll(r *Registry) {
 	r.Register(toolname.ListDirectory, listDirectoryEntry())
 	r.Register(toolname.ReadFile, readFileEntry())
+	r.Register(toolname.WriteFile, writeFileEntry())
 }
