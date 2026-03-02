@@ -26,8 +26,8 @@ A lightweight CLI for running single-purpose LLM agents. Think `make` for AI —
 - Errors that help the user fix the problem, not just describe it
 - No global state — pass dependencies explicitly
 - Flags override TOML overrides defaults. Resolution order matters everywhere.
-- When in doubt, print nothing. Axe output should be safe to pipe.
+- When in doubt, print nothing. Axe output MUST be safe to pipe.
 
 ## Project Docs
 
-Design docs live in `../projects/axe/docs/` — check milestones, config schema, sub-agent patterns, and CLI structure there before making architectural changes.
+Design docs live in `./docs/` — check milestones, config schema, sub-agent patterns, and CLI structure there before making architectural changes.
