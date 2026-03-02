@@ -1,7 +1,7 @@
 # Implementation Checklist: Tool Call M3 — `list_directory` Tool
 
 **Spec:** `docs/plans/014_list_directory_spec.md`
-**Status:** Not started
+**Status:** Complete
 
 ---
 
@@ -76,29 +76,29 @@ Write tests first (red), then implement (green).
 
 ## Phase 4: Wiring — `cmd/run.go` (Spec §3.6)
 
-- [ ] In `cmd/run.go`, after `registry := tool.NewRegistry()` (line 214), add `tool.RegisterAll(registry)`
-- [ ] Run `make test`, confirm all existing tests still pass
+- [x] In `cmd/run.go`, after `registry := tool.NewRegistry()` (line 214), add `tool.RegisterAll(registry)`
+- [x] Run `make test`, confirm all existing tests still pass
 
 ---
 
 ## Phase 5: Wiring — `internal/tool/tool.go` `ExecuteCallAgent` (Spec §3.7)
 
-- [ ] In `ExecuteCallAgent`, replace `NewRegistry()` (line 245) with `NewRegistry()` + `RegisterAll(registry)`:
+- [x] In `ExecuteCallAgent`, replace `NewRegistry()` (line 245) with `NewRegistry()` + `RegisterAll(registry)`:
   - Create registry: `registry := NewRegistry()`
   - Register tools: `RegisterAll(registry)`
   - Pass `registry` to `runConversationLoop` (replacing inline `NewRegistry()`)
-- [ ] After the existing `call_agent` tool injection (lines 228–232), add sub-agent `cfg.Tools` resolution:
+- [x] After the existing `call_agent` tool injection (lines 228–232), add sub-agent `cfg.Tools` resolution:
   - If `len(cfg.Tools) > 0`, call `registry.Resolve(cfg.Tools)`
   - If resolve error, return error `ToolResult{CallID: call.ID, Content: error message, IsError: true}`
   - Append resolved tools to `req.Tools`
   - Injection order: `call_agent` first (if applicable), then `cfg.Tools`
-- [ ] Run `make test`, confirm all existing and new tests pass
+- [x] Run `make test`, confirm all existing and new tests pass
 
 ---
 
 ## Phase 6: Final Verification
 
-- [ ] Run `make test` — all tests pass (zero failures)
-- [ ] Run `go build ./...` — compiles clean
-- [ ] Run `go vet ./...` — no warnings
-- [ ] Verify no changes to `go.mod`, `go.sum`, `internal/provider/`, `internal/agent/`, `internal/toolname/`
+- [x] Run `make test` — all tests pass (zero failures)
+- [x] Run `go build ./...` — compiles clean
+- [x] Run `go vet ./...` — no warnings
+- [x] Verify no changes to `go.mod`, `go.sum`, `internal/provider/`, `internal/agent/`, `internal/toolname/`

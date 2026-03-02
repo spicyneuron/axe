@@ -231,6 +231,21 @@ func ExecuteCallAgent(ctx context.Context, call provider.ToolCall, opts ExecuteO
 		req.Tools = []provider.Tool{CallAgentTool(cfg.SubAgents)}
 	}
 
+	// Resolve configured tools for the sub-agent
+	registry := NewRegistry()
+	RegisterAll(registry)
+	if len(cfg.Tools) > 0 {
+		resolvedTools, resolveErr := registry.Resolve(cfg.Tools)
+		if resolveErr != nil {
+			return provider.ToolResult{
+				CallID:  call.ID,
+				Content: fmt.Sprintf("failed to resolve tools for agent %q: %s", agentName, resolveErr),
+				IsError: true,
+			}
+		}
+		req.Tools = append(req.Tools, resolvedTools...)
+	}
+
 	// Step 13: Create timeout context
 	var callCtx context.Context
 	var cancel context.CancelFunc
@@ -242,7 +257,7 @@ func ExecuteCallAgent(ctx context.Context, call provider.ToolCall, opts ExecuteO
 	defer cancel()
 
 	// Step 14: Run conversation loop (or single-shot if no tools)
-	resp, err := runConversationLoop(callCtx, prov, req, cfg, NewRegistry(), newDepth, opts)
+	resp, err := runConversationLoop(callCtx, prov, req, cfg, registry, newDepth, opts)
 	if err != nil {
 		durationMs := time.Since(start).Milliseconds()
 		if opts.Verbose && opts.Stderr != nil {

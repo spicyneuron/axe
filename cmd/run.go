@@ -212,6 +212,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Step 16b: Create tool registry and resolve configured tools
 	registry := tool.NewRegistry()
+	tool.RegisterAll(registry)
 	depth := 0
 	effectiveMaxDepth := 3 // system default
 	if cfg.SubAgentsConf.MaxDepth > 0 && cfg.SubAgentsConf.MaxDepth <= 5 {
