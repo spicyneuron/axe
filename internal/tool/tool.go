@@ -12,11 +12,12 @@ import (
 	"github.com/jrswab/axe/internal/memory"
 	"github.com/jrswab/axe/internal/provider"
 	"github.com/jrswab/axe/internal/resolve"
+	"github.com/jrswab/axe/internal/toolname"
 	"github.com/jrswab/axe/internal/xdg"
 )
 
 // CallAgentToolName is the constant name for the sub-agent invocation tool.
-const CallAgentToolName = "call_agent"
+const CallAgentToolName = toolname.CallAgent
 
 // maxConversationTurns is the safety limit for the conversation loop.
 const maxConversationTurns = 50

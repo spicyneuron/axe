@@ -735,3 +735,211 @@ func TestScaffold_IsValidTOML(t *testing.T) {
 		t.Errorf("scaffold output (cleaned) is not valid TOML: %v\ncleaned:\n%s", decodeErr, tomlStr)
 	}
 }
+
+// --- Tools field: Load tests ---
+
+func TestLoad_WithTools(t *testing.T) {
+	agentsDir := setupAgentsDir(t)
+
+	tomlContent := `
+name = "tooled"
+model = "openai/gpt-4o"
+tools = ["read_file", "list_directory"]
+`
+	writeAgentFile(t, agentsDir, "tooled", tomlContent)
+
+	cfg, err := Load("tooled")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Tools) != 2 {
+		t.Fatalf("Tools length = %d, want 2", len(cfg.Tools))
+	}
+	if cfg.Tools[0] != "read_file" {
+		t.Errorf("Tools[0] = %q, want %q", cfg.Tools[0], "read_file")
+	}
+	if cfg.Tools[1] != "list_directory" {
+		t.Errorf("Tools[1] = %q, want %q", cfg.Tools[1], "list_directory")
+	}
+}
+
+func TestLoad_WithoutTools(t *testing.T) {
+	agentsDir := setupAgentsDir(t)
+
+	tomlContent := `
+name = "no-tools"
+model = "openai/gpt-4o"
+`
+	writeAgentFile(t, agentsDir, "no-tools", tomlContent)
+
+	cfg, err := Load("no-tools")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Tools != nil {
+		t.Errorf("Tools = %v, want nil", cfg.Tools)
+	}
+}
+
+func TestLoad_WithEmptyTools(t *testing.T) {
+	agentsDir := setupAgentsDir(t)
+
+	tomlContent := `
+name = "empty-tools"
+model = "openai/gpt-4o"
+tools = []
+`
+	writeAgentFile(t, agentsDir, "empty-tools", tomlContent)
+
+	cfg, err := Load("empty-tools")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Tools == nil {
+		t.Fatal("Tools is nil, want non-nil empty slice")
+	}
+	if len(cfg.Tools) != 0 {
+		t.Errorf("Tools length = %d, want 0", len(cfg.Tools))
+	}
+}
+
+// --- Tools field: Validate tests ---
+
+func TestValidate_ValidTools(t *testing.T) {
+	cfg := &AgentConfig{
+		Name:  "test",
+		Model: "openai/gpt-4o",
+		Tools: []string{"read_file", "write_file"},
+	}
+	err := Validate(cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestValidate_UnknownTool(t *testing.T) {
+	cfg := &AgentConfig{
+		Name:  "test",
+		Model: "openai/gpt-4o",
+		Tools: []string{"read_file", "bogus"},
+	}
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("expected error for unknown tool, got nil")
+	}
+	want := `unknown tool "bogus" in tools config`
+	if err.Error() != want {
+		t.Errorf("got %q, want %q", err.Error(), want)
+	}
+}
+
+func TestValidate_CallAgentInTools(t *testing.T) {
+	cfg := &AgentConfig{
+		Name:  "test",
+		Model: "openai/gpt-4o",
+		Tools: []string{"call_agent"},
+	}
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("expected error for call_agent in tools, got nil")
+	}
+	want := `unknown tool "call_agent" in tools config`
+	if err.Error() != want {
+		t.Errorf("got %q, want %q", err.Error(), want)
+	}
+}
+
+func TestValidate_EmptyStringTool(t *testing.T) {
+	cfg := &AgentConfig{
+		Name:  "test",
+		Model: "openai/gpt-4o",
+		Tools: []string{""},
+	}
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("expected error for empty string tool, got nil")
+	}
+	want := `unknown tool "" in tools config`
+	if err.Error() != want {
+		t.Errorf("got %q, want %q", err.Error(), want)
+	}
+}
+
+func TestValidate_EmptyToolsSlice(t *testing.T) {
+	cfg := &AgentConfig{
+		Name:  "test",
+		Model: "openai/gpt-4o",
+		Tools: []string{},
+	}
+	err := Validate(cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestValidate_NilToolsSlice(t *testing.T) {
+	cfg := &AgentConfig{
+		Name:  "test",
+		Model: "openai/gpt-4o",
+		Tools: nil,
+	}
+	err := Validate(cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestValidate_AllFiveTools(t *testing.T) {
+	cfg := &AgentConfig{
+		Name:  "test",
+		Model: "openai/gpt-4o",
+		Tools: []string{"list_directory", "read_file", "write_file", "edit_file", "run_command"},
+	}
+	err := Validate(cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+// --- Tools field: Scaffold tests ---
+
+func TestScaffold_ContainsToolsComment(t *testing.T) {
+	out, err := Scaffold("test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "# tools = []") {
+		t.Errorf("scaffold output missing '# tools = []'\nfull output:\n%s", out)
+	}
+}
+
+func TestScaffold_ContainsValidToolNames(t *testing.T) {
+	out, err := Scaffold("test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "# Valid: list_directory, read_file, write_file, edit_file, run_command") {
+		t.Errorf("scaffold output missing valid tool names comment\nfull output:\n%s", out)
+	}
+}
+
+func TestScaffold_ToolsBeforeSubAgents(t *testing.T) {
+	out, err := Scaffold("test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	toolsIdx := strings.Index(out, "# tools = []")
+	subAgentsIdx := strings.Index(out, "# sub_agents = []")
+	if toolsIdx < 0 {
+		t.Fatal("scaffold output missing '# tools = []'")
+	}
+	if subAgentsIdx < 0 {
+		t.Fatal("scaffold output missing '# sub_agents = []'")
+	}
+	if toolsIdx >= subAgentsIdx {
+		t.Errorf("tools section (pos %d) should appear before sub_agents section (pos %d)", toolsIdx, subAgentsIdx)
+	}
+}

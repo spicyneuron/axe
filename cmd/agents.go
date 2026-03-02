@@ -75,6 +75,9 @@ var agentsShowCmd = &cobra.Command{
 		if cfg.Workdir != "" {
 			_, _ = fmt.Fprintf(w, "%-16s%s\n", "Workdir:", cfg.Workdir)
 		}
+		if len(cfg.Tools) > 0 {
+			_, _ = fmt.Fprintf(w, "%-16s%s\n", "Tools:", strings.Join(cfg.Tools, ", "))
+		}
 		if len(cfg.SubAgents) > 0 {
 			_, _ = fmt.Fprintf(w, "%-16s%s\n", "Sub-Agents:", strings.Join(cfg.SubAgents, ", "))
 			_, _ = fmt.Fprintf(w, "%-16s%d\n", "Max Depth:", cfg.SubAgentsConf.MaxDepth)

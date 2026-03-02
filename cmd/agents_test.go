@@ -580,3 +580,95 @@ model = "anthropic/claude-sonnet-4-20250514"
 		}
 	}
 }
+
+// --- Tools display tests ---
+
+func TestAgentsShow_WithTools(t *testing.T) {
+	agentsDir := setupTestAgentsDir(t)
+	writeTestAgent(t, agentsDir, "tooled", `name = "tooled"
+model = "openai/gpt-4o"
+tools = ["read_file", "write_file"]
+`)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(new(bytes.Buffer))
+	rootCmd.SetArgs([]string{"agents", "show", "tooled"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Tools:") {
+		t.Errorf("show output missing 'Tools:'\nfull output:\n%s", output)
+	}
+	if !strings.Contains(output, "read_file, write_file") {
+		t.Errorf("show output missing 'read_file, write_file'\nfull output:\n%s", output)
+	}
+}
+
+func TestAgentsShow_WithoutTools(t *testing.T) {
+	agentsDir := setupTestAgentsDir(t)
+	writeTestAgent(t, agentsDir, "notooled", `name = "notooled"
+model = "openai/gpt-4o"
+`)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(new(bytes.Buffer))
+	rootCmd.SetArgs([]string{"agents", "show", "notooled"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Contains(output, "Tools:") {
+		t.Errorf("show output should not contain 'Tools:' when tools is empty\nfull output:\n%s", output)
+	}
+}
+
+func TestAgentsShow_ToolsDisplayOrder(t *testing.T) {
+	agentsDir := setupTestAgentsDir(t)
+	writeTestAgent(t, agentsDir, "ordered", `name = "ordered"
+model = "openai/gpt-4o"
+tools = ["read_file"]
+workdir = "/tmp"
+sub_agents = ["helper"]
+`)
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(new(bytes.Buffer))
+	rootCmd.SetArgs([]string{"agents", "show", "ordered"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	workdirIdx := strings.Index(output, "Workdir:")
+	toolsIdx := strings.Index(output, "Tools:")
+	subAgentsIdx := strings.Index(output, "Sub-Agents:")
+
+	if workdirIdx < 0 {
+		t.Fatal("output missing 'Workdir:'")
+	}
+	if toolsIdx < 0 {
+		t.Fatal("output missing 'Tools:'")
+	}
+	if subAgentsIdx < 0 {
+		t.Fatal("output missing 'Sub-Agents:'")
+	}
+
+	if toolsIdx <= workdirIdx {
+		t.Errorf("Tools: (pos %d) should appear after Workdir: (pos %d)", toolsIdx, workdirIdx)
+	}
+	if toolsIdx >= subAgentsIdx {
+		t.Errorf("Tools: (pos %d) should appear before Sub-Agents: (pos %d)", toolsIdx, subAgentsIdx)
+	}
+}

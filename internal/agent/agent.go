@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/jrswab/axe/internal/toolname"
 	"github.com/jrswab/axe/internal/xdg"
 )
 
@@ -41,6 +42,7 @@ type AgentConfig struct {
 	Skill         string          `toml:"skill"`
 	Files         []string        `toml:"files"`
 	Workdir       string          `toml:"workdir"`
+	Tools         []string        `toml:"tools"`
 	SubAgents     []string        `toml:"sub_agents"`
 	SubAgentsConf SubAgentsConfig `toml:"sub_agents_config"`
 	Memory        MemoryConfig    `toml:"memory"`
@@ -71,6 +73,12 @@ func Validate(cfg *AgentConfig) error {
 	}
 	if cfg.Memory.MaxEntries < 0 {
 		return errors.New("memory.max_entries must be non-negative")
+	}
+	validTools := toolname.ValidNames()
+	for _, name := range cfg.Tools {
+		if !validTools[name] {
+			return fmt.Errorf("unknown tool %q in tools config", name)
+		}
 	}
 	return nil
 }
@@ -164,6 +172,10 @@ model = "provider/model-name"
 
 # Working directory (optional)
 # workdir = ""
+
+# Tools this agent can use (optional)
+# Valid: list_directory, read_file, write_file, edit_file, run_command
+# tools = []
 
 # Sub-agents this agent can invoke (optional)
 # sub_agents = []

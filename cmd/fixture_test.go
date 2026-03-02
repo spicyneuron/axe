@@ -174,3 +174,29 @@ func TestFixtureSkills_StubSkillExists(t *testing.T) {
 		t.Error("stub SKILL.md missing Output Format section")
 	}
 }
+
+func TestFixtureAgents_WithToolsConfig(t *testing.T) {
+	data, err := os.ReadFile("testdata/agents/with_tools.toml")
+	if err != nil {
+		t.Fatalf("failed to read with_tools.toml: %v", err)
+	}
+
+	var cfg agent.AgentConfig
+	if _, err := toml.Decode(string(data), &cfg); err != nil {
+		t.Fatalf("failed to parse with_tools.toml: %v", err)
+	}
+
+	if err := agent.Validate(&cfg); err != nil {
+		t.Fatalf("validation failed for with_tools.toml: %v", err)
+	}
+
+	if len(cfg.Tools) != 2 {
+		t.Fatalf("Tools length = %d, want 2", len(cfg.Tools))
+	}
+	if cfg.Tools[0] != "read_file" {
+		t.Errorf("Tools[0] = %q, want %q", cfg.Tools[0], "read_file")
+	}
+	if cfg.Tools[1] != "list_directory" {
+		t.Errorf("Tools[1] = %q, want %q", cfg.Tools[1], "list_directory")
+	}
+}
