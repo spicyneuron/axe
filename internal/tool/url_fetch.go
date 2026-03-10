@@ -4,14 +4,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
+
+	"golang.org/x/net/html"
 
 	"github.com/jrswab/axe/internal/provider"
 	"github.com/jrswab/axe/internal/toolname"
 )
 
 const maxReadBytes = 10000
+
+var urlFetchTimeout = 15 * time.Second
 
 func truncateURL(urlStr string, maxLen int) string {
 	if len(urlStr) <= maxLen {
@@ -59,6 +66,34 @@ func urlFetchDefinition() provider.Tool {
 	}
 }
 
+func stripHTML(raw string) string {
+	doc, err := html.Parse(strings.NewReader(raw))
+	if err != nil {
+		return raw
+	}
+
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && (n.Data == "script" || n.Data == "style") {
+			b.WriteByte(' ')
+			return
+		}
+		if n.Type == html.TextNode {
+			b.WriteString(n.Data)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+		if n.Type == html.ElementNode {
+			b.WriteByte(' ')
+		}
+	}
+	walk(doc)
+
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
 func urlFetchExecute(ctx context.Context, call provider.ToolCall, ec ExecContext) (result provider.ToolResult) {
 	urlStr := call.Arguments["url"]
 	statusCode := 0
@@ -91,7 +126,10 @@ func urlFetchExecute(ctx context.Context, call provider.ToolCall, ec ExecContext
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+	reqCtx, cancel := context.WithTimeout(ctx, urlFetchTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return provider.ToolResult{CallID: call.ID, Content: err.Error(), IsError: true}
 	}
@@ -111,8 +149,15 @@ func urlFetchExecute(ctx context.Context, call provider.ToolCall, ec ExecContext
 	}
 
 	bodyStr := string(body)
-	if len(body) > maxReadBytes {
-		bodyStr = string(body[:maxReadBytes]) + "\n... [response truncated, exceeded 10000 characters]"
+
+	// Strip HTML if Content-Type is text/html
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if mediaType == "text/html" {
+		bodyStr = stripHTML(bodyStr)
+	}
+
+	if len(bodyStr) > maxReadBytes {
+		bodyStr = bodyStr[:maxReadBytes] + "\n... [response truncated, exceeded 10000 characters]"
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

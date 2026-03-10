@@ -313,3 +313,358 @@ func TestURLFetch_VerboseLog_SanitizesURL(t *testing.T) {
 		t.Errorf("verbose log missing sanitized path: %q", logOutput)
 	}
 }
+
+func TestURLFetch_PerRequestTimeout(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Block longer than the per-request timeout
+		timer := time.NewTimer(2 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-r.Context().Done():
+			return
+		case <-timer.C:
+			_, _ = w.Write([]byte("too late"))
+		}
+	}))
+	defer ts.Close()
+
+	// Override the per-request timeout to keep the test fast
+	orig := urlFetchTimeout
+	urlFetchTimeout = 100 * time.Millisecond
+	defer func() { urlFetchTimeout = orig }()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-per-req-timeout", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if !result.IsError {
+		t.Fatal("expected IsError true when per-request timeout fires")
+	}
+	if result.CallID != call.ID {
+		t.Errorf("CallID = %q, want %q", result.CallID, call.ID)
+	}
+	if result.Content == "" {
+		t.Error("expected non-empty error content")
+	}
+}
+
+func TestURLFetch_ParentContextWinsOverPerRequestTimeout(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		timer := time.NewTimer(2 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-r.Context().Done():
+			return
+		case <-timer.C:
+			_, _ = w.Write([]byte("too late"))
+		}
+	}))
+	defer ts.Close()
+
+	// Set per-request timeout to something long so the parent wins
+	orig := urlFetchTimeout
+	urlFetchTimeout = 10 * time.Second
+	defer func() { urlFetchTimeout = orig }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-parent-wins", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(ctx, call, ExecContext{})
+
+	if !result.IsError {
+		t.Fatal("expected IsError true when parent context fires first")
+	}
+}
+
+func TestURLFetch_FastResponseUnaffectedByTimeout(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("fast response"))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-fast", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if result.IsError {
+		t.Fatalf("expected IsError false, got true with content %q", result.Content)
+	}
+	if result.Content != "fast response" {
+		t.Errorf("Content = %q, want %q", result.Content, "fast response")
+	}
+	if result.CallID != call.ID {
+		t.Errorf("CallID = %q, want %q", result.CallID, call.ID)
+	}
+}
+
+// Phase 1A: stripHTML unit tests
+
+func TestStripHTML_BasicExtraction(t *testing.T) {
+	got := stripHTML("<html><body><p>Hello</p><p>World</p></body></html>")
+	want := "Hello World"
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestStripHTML_RemovesScriptAndStyle(t *testing.T) {
+	got := stripHTML("<html><body><script>var x=1;</script><p>Keep this</p><style>.foo{color:red}</style></body></html>")
+	want := "Keep this"
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestStripHTML_PreservesNoscript(t *testing.T) {
+	got := stripHTML("<html><body><noscript>Enable JS</noscript><p>Main content</p></body></html>")
+	want := "Enable JS Main content"
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestStripHTML_NestedScriptInDiv(t *testing.T) {
+	got := stripHTML("<div>Before<script>alert('x')</script>After</div>")
+	want := "Before After"
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestStripHTML_WhitespaceCollapsing(t *testing.T) {
+	got := stripHTML("<p>  Hello   \n\n  World  </p>")
+	want := "Hello World"
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestStripHTML_EmptyInput(t *testing.T) {
+	got := stripHTML("")
+	want := ""
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestStripHTML_OnlyScriptsAndStyles(t *testing.T) {
+	got := stripHTML("<html><body><script>code</script><style>css</style></body></html>")
+	want := ""
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestStripHTML_HTMLEntities(t *testing.T) {
+	got := stripHTML("<p>Tom &amp; Jerry &#x27;s</p>")
+	want := "Tom & Jerry 's"
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+func TestStripHTML_NoHTMLTags(t *testing.T) {
+	got := stripHTML("Just plain text")
+	want := "Just plain text"
+	if got != want {
+		t.Errorf("stripHTML() = %q, want %q", got, want)
+	}
+}
+
+// Phase 1B: urlFetchExecute integration tests
+
+func TestURLFetch_HTMLContentTypeStripsHTML(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body><script>x</script><p>Visible</p></body></html>"))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-html-strip", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if result.IsError {
+		t.Fatalf("expected IsError false, got true with content %q", result.Content)
+	}
+	if result.Content != "Visible" {
+		t.Errorf("Content = %q, want %q", result.Content, "Visible")
+	}
+}
+
+func TestURLFetch_HTMLContentTypeWithCharset(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<p>Hello charset</p>"))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-html-charset", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if result.IsError {
+		t.Fatalf("expected IsError false, got true with content %q", result.Content)
+	}
+	if result.Content != "Hello charset" {
+		t.Errorf("Content = %q, want %q", result.Content, "Hello charset")
+	}
+}
+
+func TestURLFetch_HTMLContentTypeCaseInsensitive(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "TEXT/HTML")
+		_, _ = w.Write([]byte("<p>Case test</p>"))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-html-case", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if result.IsError {
+		t.Fatalf("expected IsError false, got true with content %q", result.Content)
+	}
+	if result.Content != "Case test" {
+		t.Errorf("Content = %q, want %q", result.Content, "Case test")
+	}
+}
+
+func TestURLFetch_NonHTMLContentTypeNotStripped(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"key": "<b>value</b>"}`))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-json-no-strip", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if result.IsError {
+		t.Fatalf("expected IsError false, got true with content %q", result.Content)
+	}
+	want := `{"key": "<b>value</b>"}`
+	if result.Content != want {
+		t.Errorf("Content = %q, want %q", result.Content, want)
+	}
+}
+
+func TestURLFetch_PlainTextNotStripped(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("<p>Not HTML</p>"))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-plain-no-strip", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if result.IsError {
+		t.Fatalf("expected IsError false, got true with content %q", result.Content)
+	}
+	if result.Content != "<p>Not HTML</p>" {
+		t.Errorf("Content = %q, want %q", result.Content, "<p>Not HTML</p>")
+	}
+}
+
+func TestURLFetch_MissingContentTypeNotStripped(t *testing.T) {
+	// Note: Go's http.DetectContentType may auto-set Content-Type.
+	// We explicitly set it to empty to test the missing header case.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "")
+		_, _ = w.Write([]byte("<p>No header</p>"))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-no-ct", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if result.IsError {
+		t.Fatalf("expected IsError false, got true with content %q", result.Content)
+	}
+	// With empty Content-Type, body should be returned verbatim (no stripping)
+	if result.Content != "<p>No header</p>" {
+		t.Errorf("Content = %q, want %q", result.Content, "<p>No header</p>")
+	}
+}
+
+func TestURLFetch_Non2xxHTMLStripped(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("<html><body><script>x</script><p>Not Found</p></body></html>"))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-404-html", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if !result.IsError {
+		t.Fatal("expected IsError true")
+	}
+	if !strings.Contains(result.Content, "HTTP 404") {
+		t.Errorf("Content = %q, want contains %q", result.Content, "HTTP 404")
+	}
+	if !strings.Contains(result.Content, "Not Found") {
+		t.Errorf("Content = %q, want contains %q", result.Content, "Not Found")
+	}
+	if strings.Contains(result.Content, "<script>") {
+		t.Errorf("Content = %q, should not contain <script>", result.Content)
+	}
+}
+
+func TestURLFetch_Non2xxNonHTMLNotStripped(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error": "bad"}`))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-500-json", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if !result.IsError {
+		t.Fatal("expected IsError true")
+	}
+	if !strings.Contains(result.Content, "HTTP 500") {
+		t.Errorf("Content = %q, want contains %q", result.Content, "HTTP 500")
+	}
+	if !strings.Contains(result.Content, "bad") {
+		t.Errorf("Content = %q, want contains %q", result.Content, "bad")
+	}
+}
+
+func TestURLFetch_HTMLStrippedBeforeTruncation(t *testing.T) {
+	// Build HTML where raw size exceeds maxReadBytes but stripped text is small.
+	// 9950 bytes of CSS in a <style> tag + small visible text.
+	bigCSS := strings.Repeat("x", 9950)
+	htmlBody := "<html><body><style>" + bigCSS + "</style><p>Short text</p></body></html>"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(htmlBody))
+	}))
+	defer ts.Close()
+
+	entry := urlFetchEntry()
+	call := provider.ToolCall{ID: "uf-strip-before-trunc", Arguments: map[string]string{"url": ts.URL}}
+	result := entry.Execute(context.Background(), call, ExecContext{})
+
+	if result.IsError {
+		t.Fatalf("expected IsError false, got true with content %q", result.Content)
+	}
+	if strings.Contains(result.Content, "truncated") {
+		t.Errorf("Content should not contain truncation notice after stripping: %q", result.Content)
+	}
+	if !strings.Contains(result.Content, "Short text") {
+		t.Errorf("Content = %q, want contains %q", result.Content, "Short text")
+	}
+}

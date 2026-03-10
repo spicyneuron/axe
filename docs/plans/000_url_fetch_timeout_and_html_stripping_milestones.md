@@ -73,5 +73,5 @@ No other packages reference `url_fetch` internals directly. Changes are fully sc
 ## Section 2: Milestones
 
 - [x] 001: Add 15-second per-request HTTP timeout to `url_fetch` tool
-- [ ] 002: Add HTML stripping for `text/html` responses using `golang.org/x/net/html`
-- [ ] 003: Verify all existing and new tests pass, run vet/lint checks
+- [x] 002: Add HTML stripping for `text/html` responses using `golang.org/x/net/html`
+- [x] 003: Verify all existing and new tests pass, run vet/lint checks
