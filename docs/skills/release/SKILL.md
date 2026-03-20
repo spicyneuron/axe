@@ -1,9 +1,9 @@
 ---
 name: release
-description: Create a tagged release with a Keep a Changelog entry and trigger the GoReleaser workflow.
+description: Prepare code for release (version bumps, changelog, README updates) and create an annotated tag to trigger the GoReleaser workflow.
 ---
 
-Your job is to guide the user through creating a release for this project. Releases use annotated git tags with a `v` prefix (e.g. `v1.1.0`) and are built by the GoReleaser GitHub Actions workflow. Release notes are set explicitly via `gh release edit` — do NOT rely on the workflow to populate them.
+Your job is to guide the user through a full release for this project. A release includes preparing the code (version bumps, README documentation, changelog), creating an annotated git tag with a `v` prefix (e.g. `v1.5.0`), pushing it to trigger the GoReleaser GitHub Actions workflow, setting release notes, and linking the GHCR Docker image.
 
 ## Rules
 
@@ -11,6 +11,9 @@ Your job is to guide the user through creating a release for this project. Relea
 - Tag format is `vMAJOR.MINOR.PATCH` following [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The changelog MUST follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) format.
 - Valid changelog categories: Added, Changed, Deprecated, Removed, Fixed, Security.
+- All version strings MUST be updated before committing. There are three locations (listed in Reference). Run version tests after bumping to catch drift.
+- README.md MUST document any user-facing changes — new config fields, CLI flags, behavior changes, exit codes.
+- DO NOT push to master until the user confirms.
 - DO NOT push the tag until the user confirms.
 - DO NOT skip asking the user for the version number, tag annotation message, and changelog review.
 
@@ -35,24 +38,70 @@ Your job is to guide the user through creating a release for this project. Relea
    - `Security` — vulnerability fixes.
    - Exclude commits prefixed with `docs:`, `test:`, `ci:`, or merge commits.
 
-4. **Update CHANGELOG.md**
+4. **Bump version strings**
+   - Update all three version locations listed in the Reference section.
+   - Run `go test ./cmd/ -run TestVersion -count=1` to verify the bump is consistent.
+
+5. **Update README.md**
+   - Explore new feature implementations (via subagents if available) to understand config fields, flags, defaults, and behavior before writing documentation.
+   - For each user-facing change, update the relevant README sections: Features list, Run Flags table, Agent Configuration example TOML, and add new sections as needed.
+   - Add or update the Exit Codes table if new exit codes were introduced.
+   - Do NOT guess at config fields or flag names — read the actual implementation first.
+
+6. **Update CHANGELOG.md**
    - Prepend the new release section under the `# Changelog` header.
    - Add a reference link at the bottom of the file using the Keep a Changelog format:
      - First release: `[1.0.0]: https://github.com/jrswab/axe/releases/tag/v1.0.0`
      - Subsequent releases: `[1.1.0]: https://github.com/jrswab/axe/compare/v1.0.0...v1.1.0`
-   - Commit the changelog update before tagging.
 
-5. **Create the annotated tag** on the changelog commit.
+7. **Commit and push prep changes**
+   - Stage all modified files and commit with message: `Update changelog and version for vX.Y.Z`
+   - Push to master only after the user confirms.
 
-6. **Push** the commit and tag to origin only after the user confirms. The `v*` tag push triggers the GoReleaser workflow which builds binaries and creates the GitHub release.
+8. **Verify**
+   - Run `go build .` to confirm the binary compiles.
+   - Run `go test ./cmd/ -run TestVersion -count=1` at minimum.
+   - Confirm tests pass before proceeding to tag creation.
 
-7. **Set release notes via `gh`**
-   - After the tag is pushed, extract the version's section from `CHANGELOG.md` (excluding the heading and reference link footer) and write it to a temporary file.
-   - Run `gh release edit vX.Y.Z --notes-file <tmp-file>` to set the release description.
-   - This is the authoritative source for release notes — do NOT rely on the workflow's awk extraction.
+9. **Ask user to confirm tag creation**
+   - Show the tag name, annotation message, and commit hash.
+   - Wait for explicit confirmation before creating the tag.
+
+10. **Create the annotated tag** on the prep commit.
+
+11. **Push the tag** to origin only after the user confirms. The `v*` tag push triggers the GoReleaser workflow which builds binaries and creates the GitHub release.
+
+12. **Set release notes via `gh`**
+    - Extract the new version's section from `CHANGELOG.md` — everything between the `## [X.Y.Z]` heading and the next `##` heading, excluding the heading itself and trailing blank lines.
+    - Append a Docker section to the extracted notes:
+      ````
+      ## Docker
+
+      ```bash
+      docker pull ghcr.io/jrswab/axe:X.Y.Z
+      ```
+
+      See the [GHCR package page](https://github.com/jrswab/axe/pkgs/container/axe) for all available tags.
+      ````
+    - Write the combined content (changelog section + Docker section) to a temporary file.
+    - Poll `gh release view vX.Y.Z` every 10 seconds (up to 120 seconds) until the GoReleaser workflow creates the release.
+    - Run `gh release edit vX.Y.Z --notes-file <tmp-file>` to set the release description.
+    - Clean up the temporary file.
+    - This is the authoritative source for release notes — do NOT rely on the workflow's awk extraction.
 
 ## Reference
 
+### Project Files
 - GoReleaser config: `.goreleaser.yml` (auto-changelog is disabled)
-- Release workflow: `.github/workflows/release.yml` (builds binaries; do NOT rely on it for release notes)
+- Release workflow: `.github/workflows/release.yml` (builds binaries and Docker image; do NOT rely on it for release notes)
 - Changelog: `CHANGELOG.md`
+
+### Version Strings (all three must match)
+- `cmd/root.go` — `const Version` (source of truth)
+- `internal/mcpclient/mcpclient.go` — hardcoded `Version:` in `mcp.NewClient` call
+- `cmd/version_test.go` — test assertions for the version string
+
+### GHCR Image
+- Package page: https://github.com/jrswab/axe/pkgs/container/axe
+- Pull command: `docker pull ghcr.io/jrswab/axe:<version>`
+- Tags generated per release: `X.Y.Z`, `X.Y`, `X`, `latest` (on default branch)
