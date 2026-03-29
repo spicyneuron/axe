@@ -260,7 +260,7 @@ timeout = 120
 		"4",
 		"Parallel:",
 		"true",
-		"Timeout:",
+		"Sub-Agent Timeout:",
 		"120",
 	}
 	for _, check := range checks {
@@ -640,12 +640,69 @@ model = "openai/gpt-4o"
 	}
 }
 
+// --- Top-level Timeout field tests ---
+
+func TestAgentsShow_TopLevelTimeout_Table(t *testing.T) {
+	tests := []struct {
+		name           string
+		toml           string
+		expectContains bool
+	}{
+		{
+			name: "timeout-test",
+			toml: `name = "timeout-test"
+model = "openai/gpt-4o"
+timeout = 300
+`,
+			expectContains: true,
+		},
+		{
+			name: "no-timeout",
+			toml: `name = "no-timeout"
+model = "openai/gpt-4o"
+`,
+			expectContains: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			agentsDir := setupTestAgentsDir(t)
+			writeTestAgent(t, agentsDir, tc.name, tc.toml)
+
+			buf := new(bytes.Buffer)
+			rootCmd.SetOut(buf)
+			rootCmd.SetErr(new(bytes.Buffer))
+			rootCmd.SetArgs([]string{"agents", "show", tc.name})
+
+			err := rootCmd.Execute()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			output := buf.String()
+			hasTimeout := strings.Contains(output, "Timeout:")
+			if hasTimeout != tc.expectContains {
+				if tc.expectContains {
+					t.Errorf("show output missing 'Timeout:'\nfull output:\n%s", output)
+				} else {
+					t.Errorf("show output should not contain 'Timeout:' when timeout is not set\nfull output:\n%s", output)
+				}
+			}
+			if tc.expectContains && !strings.Contains(output, "300") {
+				t.Errorf("show output missing '300'\nfull output:\n%s", output)
+			}
+		})
+	}
+}
+
 func TestAgentsShow_ToolsDisplayOrder(t *testing.T) {
 	agentsDir := setupTestAgentsDir(t)
 	writeTestAgent(t, agentsDir, "ordered", `name = "ordered"
 model = "openai/gpt-4o"
 tools = ["read_file"]
 workdir = "/tmp"
+timeout = 300
 sub_agents = ["helper"]
 `)
 
@@ -661,11 +718,15 @@ sub_agents = ["helper"]
 
 	output := buf.String()
 	workdirIdx := strings.Index(output, "Workdir:")
+	timeoutIdx := strings.Index(output, "Timeout:")
 	toolsIdx := strings.Index(output, "Tools:")
 	subAgentsIdx := strings.Index(output, "Sub-Agents:")
 
 	if workdirIdx < 0 {
 		t.Fatal("output missing 'Workdir:'")
+	}
+	if timeoutIdx < 0 {
+		t.Fatal("output missing 'Timeout:'")
 	}
 	if toolsIdx < 0 {
 		t.Fatal("output missing 'Tools:'")
@@ -674,8 +735,11 @@ sub_agents = ["helper"]
 		t.Fatal("output missing 'Sub-Agents:'")
 	}
 
-	if toolsIdx <= workdirIdx {
-		t.Errorf("Tools: (pos %d) should appear after Workdir: (pos %d)", toolsIdx, workdirIdx)
+	if timeoutIdx <= workdirIdx {
+		t.Errorf("Timeout: (pos %d) should appear after Workdir: (pos %d)", timeoutIdx, workdirIdx)
+	}
+	if toolsIdx <= timeoutIdx {
+		t.Errorf("Tools: (pos %d) should appear after Timeout: (pos %d)", toolsIdx, timeoutIdx)
 	}
 	if toolsIdx >= subAgentsIdx {
 		t.Errorf("Tools: (pos %d) should appear before Sub-Agents: (pos %d)", toolsIdx, subAgentsIdx)
